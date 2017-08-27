@@ -84,15 +84,20 @@ def nonLinearity_demo():
 
 	print data.grad
 
+#config class for bag of words classifier
+class config:
+	num_epochs = 100
+	lr = 0.1
 
+
+#creating a bag of words classifier
 class bagOfWordsClassifier(nn.Module):
 	def __init__(self):
 		self.word_idx = {}
 		self.initData()
 		#this is just some initializer always use it??
 		super(bagOfWordsClassifier, self).__init__()
-
-
+		self.label_to_idx = {"SPANISH": 0, "ENGLISH": 1}
 
 		self.linear = nn.Linear(self.vocab_size, self.num_labels)
 
@@ -132,18 +137,44 @@ class bagOfWordsClassifier(nn.Module):
 
 		return vec.view(1, -1) #creating minibatches????
 
-	def make_target(self, label, label_to_idx):
-		return torch.LongTensor(label_to_idx[label])
+	def make_target(self, label):
+		return torch.LongTensor([self.label_to_idx[label]])
 
-	def test(self):
-		for i, 
+	def train(self):
+		self.lossFunction = nn.NLLLoss() #log-likelyhood loss
+		self.optimizer = optim.SGD(self.parameters(), config.lr)
 
-	def runModel(self):
+		for epoch in range(config.num_epochs):
+			self.runEpoch()
+			if epoch % 10 == 0:
+				self.test()
+
+
+	#this shouldn't be run independently of train I think 
+	def runEpoch(self):
 		for i, datapoint in enumerate(self.data):
+			self.zero_grad() #setting gradients to zero 
 			input, label = datapoint
-			bow_vec = self.make_bow_vector(input)
+			
+			#not sure why these need to be variables but eh 
+			bow_vec = autograd.Variable(self.make_bow_vector(input))
+			target_vec = autograd.Variable(self.make_target(label))
+
+			log_probs = self.forward(bow_vec)
+
+			loss = self.lossFunction(log_probs, target_vec)
+			loss.backward()
+			self.optimizer.step()
+
+			# print log_probs
+
+	#testData
+	def test(self):
+		for i, datapoint in enumerate(self.testData):
+			test_input, test_label = datapoint
+			bow_vec = self.make_bow_vector(test_input)
 			log_probs = self.forward(autograd.Variable(bow_vec))
-			print log_probs
+			print log_probs, datapoint, "\n"
 
 
 def testBagOfWords():
@@ -151,7 +182,9 @@ def testBagOfWords():
 	#prints out the parameters
 	# for i, param in enumerate(model.parameters()):
 		# print i, param
-	model.runModel()
+	model.train()
+	print("result ", next(model.parameters())[:, model.word_idx["creo"]])
+
 
 
 
