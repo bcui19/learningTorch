@@ -78,6 +78,7 @@ And see thy blood warm when thou feel'st it cold.""".split()
 
 		for i in range(n_gram_model.Config.epoch_num):
 			self.run_epoch()
+			return
 
 		print self.losses
 
@@ -88,11 +89,15 @@ And see thy blood warm when thou feel'st it cold.""".split()
 			context_idx = self.get_phrase_idx(context)
 			context_var = autograd.Variable(torch.LongTensor(context_idx))
 
+			self.model.zero_grad()
+
 			log_probs = self.model(context_var)
 			# print log_probs
+			# print autograd.Variable(torch.LongTensor(self.get_phrase_idx([target])))
 
 			loss = self.loss_function(log_probs, autograd.Variable(torch.LongTensor(self.get_phrase_idx([target]))))
 			loss.backward()
+			# return
 			self.optimizer.step()
 
 			total_loss += loss.data
