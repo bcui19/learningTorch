@@ -40,14 +40,21 @@ def log_sum_exp(vec):
 
 class Config:
 	embedding_size = 20
+	hidden_size = 13
+	num_epochs = 300
 	num_layers = 1
+
+	lr = 0.1
+	weight_decay = 1e-4
+
+
 	start_tag = None
 	end_tag = None
 
 
 
-class BiLSTM_CRF(nn.module):
-	def __init__(self, embedding_size, vocab_size, hidden_size, target_size, tag_to_idx):
+class BiLSTM_CRF(nn.Module):
+	def __init__(self, embedding_size, vocab_size, hidden_size, target_size, tag_to_idx = None):
 		super (BiLSTM_CRF, self).__init__()
 		self.embedding_size = embedding_size
 		self.vocab_size = vocab_size
@@ -59,10 +66,10 @@ class BiLSTM_CRF(nn.module):
 
 	def initialize_net(self):
 		self.word_embeds = nn.Embedding(self.vocab_size, self.embedding_size)
-		self.lstm = nn.LSEM(self.embedding_size, self.hidden_dim//2, #rounds down in python 3, treats as normal division in python 2
+		self.lstm = nn.LSTM(self.embedding_size, self.hidden_size//2, #rounds down in python 3, treats as normal division in python 2
 			num_layers = Config.num_layers, bidirectional = True)
 
-		self.hidden_to_tag = nn.Linear(self.hidden_dim, self.target_size)
+		self.hidden_to_tag = nn.Linear(self.hidden_size, self.target_size)
 
 		#matrix of transition parameters
 		#score of transitioning from one state to another
@@ -78,8 +85,8 @@ class BiLSTM_CRF(nn.module):
 		self.hidden = self.init_hidden()
 
 	def init_hidden(self):
-		return (autograd.Variable(torch.randn(2, 1, self.hidden_dim // 2)),
-			autograd.Variable(torch.randn(2, 1, self.hidden_dim // 2)))
+		return (autograd.Variable(torch.randn(2, 1, self.hidden_size // 2)),
+			autograd.Variable(torch.randn(2, 1, self.hidden_size // 2)))
 
 	def _forard_alg(self, feats):
 		init_alphas = torch.Tensor(1, self.target_size).fill_(-10000.)
@@ -113,25 +120,154 @@ class BiLSTM_CRF(nn.module):
 		embeds = self.word_embeds(sentence).view(len(sentence), 1, -1)
 		lstm_out, self.hidden = self.lstm(embeds, self.hidden)
 
-		lstm_out = lstm_out.view(len(sentence), self.hidden_dim)
+		lstm_out = lstm_out.view(len(sentence), self.hidden_size)
 
 		dist = self.hidden_to_tag(lstm_out)
 		return dist
 
 	def _score_sentence(self, feats, tags):
 		score = autograd.Variable(torch.tensor([0]))
-		tags = torch.cat([torch.LongTensor([self.])])
+		tags = torch.cat([torch.LongTensor([Config.start_tag]), tags]) #concatenates a list of torch long tensors
+		for i, feat in enumerate(feats):
+			score = score + \
+				self.transitions[tags[i+1], tags[i]] + feats[tags[i+1]]
+		score = score + self.transitions[Config.end_tag, tags[-1]] #transitioning from the last tag to the end token tag
+		return score
+
+	def _viterbi_decode(self, feats):
+		backpointers = []
 
 
+		init_vvars = torch.Tensor(1, self.target_size).fill_(-10000.)
+		init_vvars[0][Config.start_tag] = 0
+
+		forward_var = autograd.Variable(init_vvars)
+
+		for feat in feats:
+			bptrs_t = [] # holds backpointers at this step
+			viterbivars_t = [] # holds viterbi variables at this step
+
+			for next_tag in range(self.target_size):
+				next_tag_var = forward_var + self.transitions[next_tag]
+				best_tag_id = argmax(next_tag_var)
+				bptrs_t.append(best_tag_id)
+				viterbivars_t.append(next_tag_var[0][best_tag_id])
+
+			forward_var = (torch.cat(viterbivars_t) + feat).view(1, -1)
+			backpointers.append(bptrs_t)
+
+		#transition to the stop tag
+		terminal_var = forward_var + self.transitions[Config.start_tag]
+		best_tag_id = argmax(terminal_var)
+		path_score = terminal_var[0][best_tag_id]
+
+		#following backpointers to decode path 
+		best_path = [best_tag_id]
+		for bptrs_t in reversed(backpointers):
+			best_tag_id = bptrs_t[best_tag_id]
+			best_path.append(best_tag_id)
+
+		#pop off start tag
+		start = best_path.pop()
+		assert (start == Config.start_tag) #sanity check
+		best_path.reverse()
+
+		return path_score, best_path
+
+	def neg_log_likelihood(self, sentence, tags):
+		feats = self._get_lstm_features(sentence)
+		forward_score = self._forard_alg(feats)
+		gold_score = self._score_sentence(feats, tags)
+		return forward_score - gold_score
+
+	#different than _forward_alg above
+	def forward(self, sentence):
+		lstm_feats = self._get_lstm_features(sentence)
+
+		#find best path given features
+		score, tag_seq = self._viterbi_decode(lstm_feats)
+		return score, tag_seq
 
 
+class runCLF:
+	def __init__(self, model):
+		self.word_to_idx = {}
+		self.tag_to_idx = {}
+
+		self.initialize_run()
+
+		self.model = model(Config.embedding_size, len(self.word_to_idx), Config.hidden_size, len(self.tag_to_idx))
 
 
+		self.train()
+
+	def initialize_run(self):
+		self.trainingData = [(
+	"the wall street journal reported today that apple corporation made money".split(),
+	"B I I I O O O B I O O".split()
+), (
+	"georgia tech is a university in georgia".split(),
+	"B I O O O O B".split()
+)]
+		for sentence, tags in self.trainingData:
+			for word in sentence:
+				if word not in self.word_to_idx: self.word_to_idx[word] = len(self.word_to_idx)
+			for tag in tags:
+				if tag not in self.tag_to_idx: self.tag_to_idx[tag] = len(self.tag_to_idx)
+
+		self.tag_to_idx['<START>'] = len(self.tag_to_idx)
+		self.tag_to_idx['<END>'] = len(self.tag_to_idx)
+
+		Config.start_tag = self.tag_to_idx['<START>']
+		Config.end_tag = self.tag_to_idx['<END>']
+
+
+	def train(self):
+		def initialize_train():
+			self.optimizer = optim.SGD(self.model.parameters(), lr = Config.lr, weight_decay = Config.weight_decay)
+
+		initialize_train()
+
+		for i in range(Config.num_epochs):
+			if i  % 25 == 0:
+				pass
+
+			self.run_epoch()
+
+	def test(self):
+		for sentence, tags in self.trainingData:
+			sentence_input, targets = self.prep_inputs(sentence, tags)
+
+			neg_log_likelihood = model.neg_log_likelihood(sentence_input, targets)
+
+			print neg_log_likelihood.max(1)[1], targets
+
+
+	def run_epoch(self):
+		for sentence, tags in self.trainingData:
+			#clear out gradients 
+			self.model.zero_grad()
+
+			sentence_input, targets = self.prep_inputs(sentence, tags)
+
+			#forwrad pass through model
+			neg_log_likelihood = self.model.neg_log_likelihood(sentence_input, targets)
+
+			#optimizer
+			neg_log_likelihood.backward()
+			self.optimizer.step()
+
+
+	def prep_inputs(self, sentence, tags):
+		sentence_input = prepare_sequence(sentence, self.word_to_idx)
+		targets = torch.LongTensor([self.tag_to_idx[tag] for tag in tags])
+		return sentence_input, targets
+		
 
 
 
 def main():
-	pass
+	runCLF(BiLSTM_CRF)
 
 
 if __name__ == "__main__":
