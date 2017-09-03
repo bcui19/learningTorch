@@ -14,10 +14,10 @@ import torch.optim as optim
 #configuration parameters for CBOW
 class Config:
 	window_size = 2 #window size
-	lr = 0.1 #learning rate
-	num_epochs = 10 #number of epochs
+	lr = 0.2 #learning rate
+	num_epochs = 15 #number of epochs
 	embedding_size = 10 #size of embeddings
-	minibatch_size = 5
+	minibatch_size = 12
 
 
 
@@ -110,9 +110,6 @@ we conjure the spirits of the computer with our spells.""".split()
 			minibatch_target.append(self.get_phrase_idx([target]))
 			counter += 1
 
-
-
-
 	def runEpoch(self):
 		total_loss = torch.Tensor([0])
 		counter = 0
@@ -171,9 +168,6 @@ we conjure the spirits of the computer with our spells.""".split()
 		self.losses.append(total_loss)
 
 			
-
-
-
 
 class CBowModel(nn.Module):
 	def __init__(self, vocab_size, embedding_size):
