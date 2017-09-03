@@ -28,7 +28,7 @@ def test_lstm():
 	for i in inputs:
 		out, hidden = lstm(i.view(1, 1, -1), hidden)
 
-	#alternatively feed in the entire sequence at one
+	#alternatively feed in the entire sequence at once
 	inputs = torch.cat(inputs).view(len(inputs), 1, -1)
 
 	hidden = (autograd.Variable(torch.randn(1, 1, 3)),
