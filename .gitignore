@@ -1,0 +1,5 @@
+#ignore excess files
+.DS_Store
+
+#ignore these filespaths
+data/
