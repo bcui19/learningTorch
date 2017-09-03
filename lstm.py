@@ -1,3 +1,13 @@
+'''
+This module was used for testing the inner workings of pytorch lstm modules
+
+Currently implemented a part of speech (POS) tagging system based on words
+
+
+Important things to note:
+	Hidden states in LSTMs are constructed as (hidden_dim, minibatch_size, input_size)
+'''
+
 import torch
 import torch.autograd as autograd
 import torch.nn as nn
@@ -28,10 +38,15 @@ def test_lstm():
 
 	print out, hidden
 
-class config:
+#config class used for configurations for the nn
+class Config:
 	embedding_size = 7
 	hidden_size = 13
 	minibatch_size = 1
+	epoch_num = 301
+	num_lstm_layers = 1
+	lr = 0.1
+
 	#meant to be a sentence truncation length
 	#I'll implement this later properly
 	sentence_length = 4 
@@ -49,12 +64,20 @@ class Run_Part_Of_Speech:
 
 		self.train()
 
-
-	def dict_to_idx(self, sequence = None):
+	#for a given phrase/tag return the indices from a given index dict
+	def dict_to_idx(self, sequence = None, ref_dict = None):
 		assert(sequence is not None)
-		idx = [self.word_to_idx[word] for word in sequence]
+		assert(ref_dict is not None)
+		idx = [ref_dict[word] for word in sequence]
 		returnTensor = torch.LongTensor(idx)
 		return autograd.Variable(returnTensor) #create a variable that can automatically be differentiated
+
+	#idx is some list and then we reverse index 
+	def idx_to_phrase(self, idx = None, ref_dict = None):
+		assert(idx is not None)
+		assert(ref_dict is not None)
+		inverseDict = {ref_dict[i]: i for i in ref_dict}
+		return [inverseDict[i.data.numpy()[0]] for i in idx]
 
 	#adds a phrase to the dictionary, ensuring no overlaps
 	def add_phrase_to_dict(self, phrase):
@@ -78,7 +101,44 @@ class Run_Part_Of_Speech:
 
 
 	def train(self):
-		
+		def training_initializer():
+			self.loss_function = nn.NLLLoss()
+			self.optimizer = optim.SGD(self.model.parameters(), lr = Config.lr)
+
+		training_initializer() #initializes the loss function and optimizer 
+		self.train_inputs = []
+		self.train_goal = []
+		for phrase, target in self.trainData:
+			self.train_inputs.append(self.dict_to_idx(phrase, self.word_to_idx))
+			self.train_goal.append(self.dict_to_idx(target, self.tag_to_idx))
+
+		for i in range(Config.epoch_num):
+			self.runEpoch()
+			if i % 25 == 0:
+				self.test()
+
+	def runEpoch(self):
+		#pairing up one to one goal and data
+		for data, goal in zip(self.train_inputs, self.train_goal):
+			self.model.zero_grad()
+
+			#clearing out the models hidden memory 
+			self.model.hidden = self.model.init_hidden()
+
+			tag_probs = self.model(data)
+			loss = self.loss_function(tag_probs, goal)
+			loss.backward()
+			self.optimizer.step()
+
+	def test(self):
+		print "TESTING\n"
+		for data, goal in zip(self.train_inputs, self.train_goal):
+			probs = self.model(data)
+			prob_max, prob_idx = probs.max(1) #max returns tuple of the max value and the max index
+
+			print self.idx_to_phrase(goal, self.tag_to_idx)
+			print self.idx_to_phrase(prob_idx, self.tag_to_idx)
+		print "DONE TESTING"
 
 
 
@@ -106,12 +166,12 @@ class LSTM_tagger_model(nn.Module):
 	'''
 	def init_hidden(self):
 		#semantics are (num_layers, minibatch_size, hidden_size)
-		return (autograd.Variable(torch.zeros(1, Config.minibatch_size, self.hidden_size)),
-				autograd.Variable(torch.zeros(1, Config.minibatch_size, self.hidden_size)))
+		return (autograd.Variable(torch.zeros(Config.num_lstm_layers, Config.minibatch_size, self.hidden_size)),
+				autograd.Variable(torch.zeros(Config.num_lstm_layers, Config.minibatch_size, self.hidden_size)))
 
 	#forward pass of the tagger
 	def forward(self, sentence_idx):
-		embed = self.word_embeddings(sentence_idx)
+		embeds = self.word_embeddings(sentence_idx)
 		lstm_out, self.hidden_out = self.lstm(
 			embeds.view(len(sentence_idx), Config.minibatch_size, -1), self.hidden) #inputting embeddings/hidden states into lstm
 
@@ -126,7 +186,7 @@ class LSTM_tagger_model(nn.Module):
 
 def main():
 	# test_lstm()
-	Run_Part_Of_Speech()
+	Run_Part_Of_Speech(LSTM_tagger_model)
 
 if __name__ == "__main__":
 	main()
