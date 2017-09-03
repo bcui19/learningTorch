@@ -1,6 +1,11 @@
 '''
 Showing the usefulness of a dynamic architecture as presented in pytorch
 
+Everything works and trains
+can overfit
+
+I'm going to need to come back to see how crf's actually work 
+
 
 '''
 
@@ -40,7 +45,7 @@ def log_sum_exp(vec):
 
 class Config:
 	embedding_size = 20
-	hidden_size = 13
+	hidden_size = 50
 	num_epochs = 300
 	num_layers = 1
 
@@ -101,7 +106,7 @@ class BiLSTM_CRF(nn.Module):
 				emit_score = feat[next_tag].view(1, -1).expand(1, self.target_size)
 				
 				#the ith entry of the transition score is probability of transitioning to next_tag from i
-				trans_score = self.trainsitions[next_tag].view(1, -1)
+				trans_score = self.transitions[next_tag].view(1, -1)
 
 				next_tag_var = forward_var + trans_score + emit_score
 
@@ -126,11 +131,12 @@ class BiLSTM_CRF(nn.Module):
 		return dist
 
 	def _score_sentence(self, feats, tags):
-		score = autograd.Variable(torch.tensor([0]))
+		score = autograd.Variable(torch.Tensor([0]))
 		tags = torch.cat([torch.LongTensor([Config.start_tag]), tags]) #concatenates a list of torch long tensors
 		for i, feat in enumerate(feats):
 			score = score + \
-				self.transitions[tags[i+1], tags[i]] + feats[tags[i+1]]
+				self.transitions[tags[i+1], tags[i]] + feat[tags[i+1]]
+
 		score = score + self.transitions[Config.end_tag, tags[-1]] #transitioning from the last tag to the end token tag
 		return score
 
@@ -230,7 +236,7 @@ class runCLF:
 
 		for i in range(Config.num_epochs):
 			if i  % 25 == 0:
-				pass
+				self.test()
 
 			self.run_epoch()
 
@@ -238,9 +244,18 @@ class runCLF:
 		for sentence, tags in self.trainingData:
 			sentence_input, targets = self.prep_inputs(sentence, tags)
 
-			neg_log_likelihood = model.neg_log_likelihood(sentence_input, targets)
+			model_resu = self.model(sentence_input)
 
-			print neg_log_likelihood.max(1)[1], targets
+			reverseDict = {self.tag_to_idx[i]: i for i in self.tag_to_idx}
+
+			resu = [reverseDict[i] for i in model_resu[1]]
+
+
+			print "RESULT IS: ", resu
+
+			print "TAGS ARE: ", tags
+
+			# print neg_log_likelihood.max(1)[1], targets
 
 
 	def run_epoch(self):
