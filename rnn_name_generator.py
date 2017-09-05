@@ -59,15 +59,17 @@ def getTime(since):
 	s -= m * 60
 	return '%dm %ds' %(m, s) #returns number of minutes and seconds since starting
 
-
+#config class for hyperparameter tuning and stuff 
 class Config:
 	dropout = 0.1 #dropout probability
 	minibatch_size = 1
-	hidden_size = 50
-	lr = 0.0005
+	hidden_size = 128
+	lr = 0.005
+	max_length = 20
 
 	n_categories = None
 	end_index = None
+
 
 	#configurations for displaying results
 	n_iters = 50000
@@ -157,6 +159,11 @@ class runClassifier:
 			output, loss = self.runSample(*self.randomTrainingSample())
 			self.total_loss += loss
 
+			if i == 10000:
+				print ("old lr ", Config.lr)
+				Config.lr /= 10
+				print ("new lr ", Config.lr)
+
 			if i % Config.print_every == 0:
 				print ("%s (%d %d%%) %.4f" % (getTime(start), i, i / Config.n_iters * 100, self.total_loss/Config.plot_every))
 
@@ -164,6 +171,8 @@ class runClassifier:
 				self.losses.append(self.total_loss / Config.plot_every)
 				self.total_loss = 0
 		
+		self.sample("Russian", "R")
+
 		plt.figure()
 		plt.plot(range(len(self.losses)), self.losses)
 		plt.show()
@@ -190,6 +199,36 @@ class runClassifier:
 			p.data.add_(-Config.lr, p.grad.data) 
 
 		return output, loss.data[0] / input_line_tensor.size()[0] #output and mean loss
+
+	def sample(self, category, start_letter = "A"):
+		def convert_idx_to_char(output_words):
+			print (output_words)
+			return [''.join([all_letters[char_idx] for char_idx in currWord]) for currWord in output_words]
+
+		category_tensor = Variable(self.create_CategoryTensor(category))
+		input = Variable(self.create_inputTensor(start_letter))
+
+		hidden = self.model.initHidden()
+
+		output_words = [[all_letters.find(start_letter)]]
+
+		for i in range(Config.max_length):
+			output, hidden = self.model(category_tensor, input[0], hidden)
+
+			top_v, idx = output.data.topk(1) #take the top k along the first axis
+
+			index = idx[0]
+			print (index)
+			if index[0] == Config.end_index:
+				break
+
+			output_words.append(index) #append maximum index
+			input = Variable(self.create_inputTensor(all_letters[index[0]]))
+
+		print (convert_idx_to_char(output_words))
+
+
+
 
 
 
