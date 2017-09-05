@@ -244,9 +244,9 @@ class rnnClassifier(nn.Module):
 		self.output_size = output_size
 
 		self.hidden_linear = nn.Linear(Config.n_categories + input_size + hidden_size, hidden_size)
-		self.output_linear = nn.Linear(Config.n_categories + input_size + hidden_size, Config.n_categories)
+		self.output_linear = nn.Linear(Config.n_categories + input_size + hidden_size, output_size)
 
-		self.outputOutput_linear = nn.Linear(Config.n_categories + hidden_size, output_size)
+		self.outputOutput_linear = nn.Linear(output_size + hidden_size, output_size)
 
 		self.dropout = nn.Dropout(Config.dropout)
 		self.softmax = nn.LogSoftmax()
