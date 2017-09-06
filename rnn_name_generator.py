@@ -215,7 +215,7 @@ class runClassifier:
 		for i in range(Config.max_length):
 			output, hidden = self.model(category_tensor, input[0], hidden)
 
-			top_v, idx = output.data.topk(1) #take the top k along the first axis
+			top_v, idx = output.data.topk(1, dim = 1) #take the top k along the first axis
 
 			index = idx[0]
 			print (index)
