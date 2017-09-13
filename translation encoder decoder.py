@@ -19,7 +19,10 @@ from torch import optim
 import torch.nn.functional as F
 
 import time
+import math
 
+
+	
 use_cuda = torch.cuda.is_available()
 
 class Config:
@@ -65,7 +68,18 @@ class Lang:
 		else:
 			self.word_to_count[word] += 1
 
+def asMinutes(s):
+	m = math.floor(s / 60)
+	s -= m * 60
+	return '%dm %ds' % (m, s)
 
+
+def timeSince(since, percent):
+	now = time.time()
+	s = now - since
+	es = s / (percent)
+	rs = es - s
+	return '%s (- %s)' % (asMinutes(s), asMinutes(rs))
 
 # Turn a Unicode string to plain ASCII, thanks to
 # http://stackoverflow.com/a/518232/2809427
@@ -131,12 +145,12 @@ import numpy as np
 
 
 def showPlot(points):
-    plt.figure()
-    fig, ax = plt.subplots()
-    # this locator puts ticks at regular intervals
-    loc = ticker.MultipleLocator(base=0.2)
-    ax.yaxis.set_major_locator(loc)
-    plt.plot(points)
+	plt.figure()
+	fig, ax = plt.subplots()
+	# this locator puts ticks at regular intervals
+	loc = ticker.MultipleLocator(base=0.2)
+	ax.yaxis.set_major_locator(loc)
+	plt.plot(points)
 
 
 import random
@@ -215,9 +229,9 @@ class runTranslation:
 				decoder_output, decoder_hidden, decoder_attention = decoder(
 					decoder_input, decoder_hidden, encoder_output, encoder_outputs)
 				topv, topi = decoder_output.data.topk(1)
-				ni = top1[0][0]
+				ni = topi[0][0]
 
-				decoder_input = variable(torch.LongTensor([[ni]]))
+				decoder_input = Variable(torch.LongTensor([[ni]]))
 
 				loss += criterion(decoder_output, target_variable[i])
 				if ni == Config.END_TOKEN:
@@ -252,15 +266,15 @@ class runTranslation:
 			plot_total_loss += loss
 
 			if i % Config.print_every == 0:
-				print_loss_avg = print_loss_total / print_every
-				print_loss_total = 0.
-				print('%s (%d %d%%) %.4f' % (timeSince(start, i / n_iters),
+				print_loss_avg = print_total_loss / Config.print_every
+				print_total_loss = 0.
+				print('%s (%d %d%%) %.4f' % (timeSince(start, i / Config.n_iters),
 										 i, i / Config.n_iters * 100, print_loss_avg))
 
 			if i % Config.plot_every == 0:
-				plot_loss_avg = plot_loss_total / plot_every
+				plot_loss_avg = plot_total_loss / Config.plot_every
 				plot_losses.append(plot_loss_avg)
-				plot_loss_total = 0
+				plot_total_loss = 0
 
 		showPlot(plot_losses)
 
@@ -332,7 +346,7 @@ class attentionRNNDecoder(nn.Module):
 
 	def forward(self, input, hidden, encoder_output, encoder_outputs):
 		embedded = self.embedding(input).view(1, Config.mb_size, -1)
-		embedded = nn.Dropout(embedded)
+		embedded = self.dropout(embedded)
 
 		attn_weights = F.softmax(
 			self.attn(torch.cat((embedded[0], hidden[0]), 1))) #mb_size x max_length 
